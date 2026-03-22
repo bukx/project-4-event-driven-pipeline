@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer
+  namespace: data-pipeline
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: kafka-consumer }
+  template:
+    metadata:
+      labels: { app: kafka-consumer }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "8002" }
+    spec:
+      containers:
+        - name: consumer
+          image: kafka-consumer:latest
+          ports: [{ containerPort: 8002 }]
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "500m", memory: "1Gi" }
+          env:
+            - { name: KAFKA_BROKER, valueFrom: { configMapKeyRef: { name: pipeline-config, key: kafka_broker } } }
+            - { name: KAFKA_TOPIC, value: "events" }
+            - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: db-credentials, key: url } } }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: kafka-consumer
+  namespace: data-pipeline
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: kafka-consumer
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }

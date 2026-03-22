@@ -1,0 +1,62 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment: { ZOOKEEPER_CLIENT_PORT: 2181 }
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    ports: ["9092:9092"]
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+  postgres:
+    image: postgres:15
+    ports: ["5432:5432"]
+    environment: { POSTGRES_DB: events, POSTGRES_USER: user, POSTGRES_PASSWORD: pass }
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on: [kafka]
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "echo 'Waiting for Kafka...' && sleep 10 &&
+       kafka-topics --create --if-not-exists --topic events --partitions 6 --replication-factor 1 --bootstrap-server kafka:29092 &&
+       kafka-topics --create --if-not-exists --topic events-dlq --partitions 3 --replication-factor 1 --bootstrap-server kafka:29092 &&
+       echo 'Topics created'"
+
+  producer:
+    build: { context: ., dockerfile: docker/Dockerfile.producer }
+    depends_on: [kafka-setup]
+    environment:
+      KAFKA_BROKER: kafka:29092
+      KAFKA_TOPIC: events
+      PRODUCE_RATE: "50"
+
+  consumer:
+    build: { context: ., dockerfile: docker/Dockerfile.consumer }
+    depends_on: [kafka-setup, postgres]
+    environment:
+      KAFKA_BROKER: kafka:29092
+      KAFKA_TOPIC: events
+      DATABASE_URL: postgresql://user:pass@postgres:5432/events
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    ports: ["9090:9090"]
+    volumes: [./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml]
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    ports: ["3000:3000"]
+    environment: { GF_SECURITY_ADMIN_PASSWORD: admin }
+
+volumes:
+  pgdata:
