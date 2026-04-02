@@ -2,29 +2,46 @@
 Kafka Consumer — Processes events and writes to PostgreSQL in batches.
 Runs on Kubernetes with HPA based on consumer lag.
 """
-import os, json, time, logging
+import os
+import json
+import time
+import logging
 import psycopg2
 from psycopg2.extras import execute_batch
 from confluent_kafka import Consumer, KafkaError
 from prometheus_client import Counter, Histogram, Gauge, start_http_server
 
-logging.basicConfig(level=logging.INFO,
-    format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}')
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
+)
 logger = logging.getLogger("kafka-consumer")
 
 EVENTS_CONSUMED = Counter("consumer_events_total", "Events consumed", ["topic", "event_type"])
-CONSUME_LATENCY = Histogram("consumer_process_seconds", "Per-event processing time",
-    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0])
-BATCH_SIZE = Histogram("consumer_batch_size", "Events per batch", buckets=[1, 5, 10, 25, 50, 100])
+CONSUME_LATENCY = Histogram(
+    "consumer_process_seconds",
+    "Per-event processing time",
+    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0],
+)
+BATCH_SIZE = Histogram(
+    "consumer_batch_size",
+    "Events per batch",
+    buckets=[1, 5, 10, 25, 50, 100],
+)
 CONSUMER_LAG = Gauge("consumer_lag_messages", "Consumer lag", ["partition"])
-DB_WRITE_DURATION = Histogram("consumer_db_write_seconds", "DB write time",
-    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0])
+DB_WRITE_DURATION = Histogram(
+    "consumer_db_write_seconds",
+    "DB write time",
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
 ERRORS = Counter("consumer_errors_total", "Processing errors", ["error_type"])
 
 
 class PostgresWriter:
-    INSERT_SQL = """INSERT INTO events (event_id, event_type, timestamp, user_id, region, payload)
-        VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (event_id) DO NOTHING"""
+    INSERT_SQL = (
+        "INSERT INTO events (event_id, event_type, timestamp, user_id, region, payload) "
+        "VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (event_id) DO NOTHING"
+    )
 
     def __init__(self, dsn: str, batch_size: int = 50):
         self.batch_size = batch_size
@@ -37,9 +54,13 @@ class PostgresWriter:
         with self.conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS events (
-                    event_id UUID PRIMARY KEY, event_type VARCHAR(50) NOT NULL,
-                    timestamp TIMESTAMPTZ NOT NULL, user_id VARCHAR(20) NOT NULL,
-                    region VARCHAR(20), payload JSONB NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
+                    event_id UUID PRIMARY KEY,
+                    event_type VARCHAR(50) NOT NULL,
+                    timestamp TIMESTAMPTZ NOT NULL,
+                    user_id VARCHAR(20) NOT NULL,
+                    region VARCHAR(20),
+                    payload JSONB NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
                 );
                 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
                 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(timestamp);
@@ -47,8 +68,14 @@ class PostgresWriter:
             self.conn.commit()
 
     def add(self, event: dict):
-        self.buffer.append((event["event_id"], event["event_type"], event["timestamp"],
-                           event["user_id"], event.get("region", "unknown"), json.dumps(event)))
+        self.buffer.append((
+            event["event_id"],
+            event["event_type"],
+            event["timestamp"],
+            event["user_id"],
+            event.get("region", "unknown"),
+            json.dumps(event),
+        ))
         if len(self.buffer) >= self.batch_size:
             self.flush()
 
@@ -78,8 +105,10 @@ def run_consumer():
     db_dsn = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/events")
 
     consumer = Consumer({
-        "bootstrap.servers": broker, "group.id": group_id,
-        "auto.offset.reset": "earliest", "enable.auto.commit": False,
+        "bootstrap.servers": broker,
+        "group.id": group_id,
+        "auto.offset.reset": "earliest",
+        "enable.auto.commit": False,
     })
     consumer.subscribe([topic])
     writer = PostgresWriter(db_dsn, batch_size=50)

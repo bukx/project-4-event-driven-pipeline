@@ -2,18 +2,29 @@
 Kafka Producer — Simulates IoT / clickstream events at configurable throughput.
 Usage: python producer.py --topic events --rate 500 --broker kafka:9092
 """
-import os, json, time, uuid, random, argparse, logging
+import os
+import json
+import time
+import uuid
+import random
+import argparse
+import logging
 from datetime import datetime, timezone
 from confluent_kafka import Producer
 from prometheus_client import Counter, Histogram, start_http_server
 
-logging.basicConfig(level=logging.INFO,
-    format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}')
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"ts":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
+)
 logger = logging.getLogger("kafka-producer")
 
 EVENTS_PRODUCED = Counter("producer_events_total", "Events produced", ["topic", "event_type"])
-PRODUCE_LATENCY = Histogram("producer_send_seconds", "Enqueue time",
-    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1])
+PRODUCE_LATENCY = Histogram(
+    "producer_send_seconds",
+    "Enqueue time",
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1],
+)
 PRODUCE_ERRORS = Counter("producer_errors_total", "Failed produces", ["topic"])
 
 EVENT_TYPES = ["page_view", "click", "add_to_cart", "purchase", "sensor_reading"]
@@ -25,11 +36,13 @@ REGIONS = ["us-east", "us-west", "eu-west", "ap-south", "sa-east"]
 def generate_event() -> dict:
     event_type = random.choices(EVENT_TYPES, weights=[40, 25, 15, 10, 10], k=1)[0]
     event = {
-        "event_id": str(uuid.uuid4()), "event_type": event_type,
+        "event_id": str(uuid.uuid4()),
+        "event_type": event_type,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_id": f"user-{random.randint(1, 10000):05d}",
         "session_id": str(uuid.uuid4())[:8],
-        "device": random.choice(DEVICES), "region": random.choice(REGIONS),
+        "device": random.choice(DEVICES),
+        "region": random.choice(REGIONS),
     }
     if event_type in ("page_view", "click"):
         event["page"] = random.choice(PAGES)
@@ -60,8 +73,11 @@ def run_producer(broker: str, topic: str, rate: int):
     producer = Producer({
         "bootstrap.servers": broker,
         "client.id": f"producer-{uuid.uuid4().hex[:8]}",
-        "acks": "all", "retries": 3, "linger.ms": 10,
-        "batch.size": 16384, "compression.type": "lz4",
+        "acks": "all",
+        "retries": 3,
+        "linger.ms": 10,
+        "batch.size": 16384,
+        "compression.type": "lz4",
     })
     interval = 1.0 / rate if rate > 0 else 0.01
     total_sent = 0
@@ -71,8 +87,12 @@ def run_producer(broker: str, topic: str, rate: int):
         while True:
             event = generate_event()
             start = time.perf_counter()
-            producer.produce(topic=topic, key=event["user_id"].encode(),
-                           value=json.dumps(event).encode(), callback=delivery_callback)
+            producer.produce(
+                topic=topic,
+                key=event["user_id"].encode(),
+                value=json.dumps(event).encode(),
+                callback=delivery_callback,
+            )
             PRODUCE_LATENCY.observe(time.perf_counter() - start)
             total_sent += 1
             if total_sent % 1000 == 0:
