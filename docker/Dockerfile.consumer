@@ -1,5 +1,5 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir confluent-kafka psycopg2-binary prometheus-client
+RUN pip install --no-cache-dir confluent-kafka==2.3.0 psycopg2-binary==2.9.9 prometheus-client==0.19.0
 COPY consumers/src/ ./src/
 CMD ["python", "src/consumer.py"]
