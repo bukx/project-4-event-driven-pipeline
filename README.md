@@ -15,31 +15,7 @@ High-throughput event-driven data pipeline using **Apache Kafka (MSK)**, **AWS L
 
 ## 🏗 Architecture
 
-```
-  ┌──────────┐     ┌─────────────┐     ┌──────────────────┐
-  │Producers │────▶│ Apache Kafka│────▶│  K8s Consumers   │
-  │(Python)  │     │   (MSK)     │     │  (Auto-scaling)  │
-  └──────────┘     └──────┬──────┘     └────────┬─────────┘
-                          │                     │
-                   ┌──────▼──────┐              │
-                   │EventBridge  │              ▼
-                   └──────┬──────┘        ┌───────────┐
-                          │               │PostgreSQL │
-                   ┌──────▼──────┐        └───────────┘
-                   │ AWS Lambda  │
-                   │(Transform)  │
-                   └──────┬──────┘
-                          │
-                   ┌──────▼──────┐     ┌───────────┐
-                   │  Airflow    │────▶│ Snowflake │
-                   │ (Batch ETL) │     │(Analytics)│
-                   └─────────────┘     └───────────┘
-
-  ┌─────────────────────────────────────────┐
-  │  Monitoring: Prometheus + Grafana       │
-  │  Consumer lag, throughput, error rates  │
-  └─────────────────────────────────────────┘
-```
+![Architecture Diagram](docs/architecture.png)
 
 ## 🔧 Tech Stack
 
